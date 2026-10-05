@@ -54,6 +54,7 @@ router.post("/create-order", optionalAuth, paymentController.createOrder);
  *         description: Payment verified and subscription activated
  */
 router.post("/verify", optionalAuth, paymentController.verifyPayment);
+router.post("/verify-payment", optionalAuth, paymentController.verifyPayment);
 
 /**
  * @swagger

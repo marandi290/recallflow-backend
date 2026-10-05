@@ -61,6 +61,7 @@ app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/ai", aiRoutes);
 app.use("/api/v1/data", dataRoutes);
 app.use("/api/v1/payments", paymentRoutes);
+app.use("/api", paymentRoutes);
 
 // Global Error Handler
 app.use(errorHandler);

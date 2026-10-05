@@ -78,15 +78,20 @@ const getSubscriptionStatus = async (userId) => {
     return computeSubscriptionStatus(user);
 };
 
-const createOrder = async (userId) => {
+const createOrder = async (userId, orderOptions = {}) => {
     const user = await User.findByPk(userId);
     if (!user) {
         throw new ApiError(httpStatus.NOT_FOUND, "User not found");
     }
 
-    const amountInPaise = 500; // Rs. 5 = 500 paise
-    const currency = "INR";
-    const receipt = `rcpt_${userId}_${Date.now()}`;
+    // Default amount 500 paise (Rs. 5) if omitted
+    const amountInPaise = orderOptions.amount !== undefined ? Number(orderOptions.amount) : 500;
+    if (isNaN(amountInPaise) || amountInPaise < 100) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Amount must be at least 100 paise (Rs. 1)");
+    }
+
+    const currency = orderOptions.currency || "INR";
+    const receipt = orderOptions.receipt || `rcpt_${userId}_${Date.now()}`;
     const rzp = getRazorpayInstance();
 
     let orderId;
@@ -103,12 +108,14 @@ const createOrder = async (userId) => {
                     plan: "monthly_rs_5",
                     userName: user.name,
                     userEmail: user.email,
+                    ...(orderOptions.notes || {}),
                 },
             });
             orderId = rzpOrder.id;
         } catch (err) {
             console.error("Razorpay order creation error:", err);
-            throw new ApiError(httpStatus.BAD_GATEWAY, `Failed to create Razorpay order: ${err.message}`);
+            const statusCode = err.statusCode === 401 ? httpStatus.UNAUTHORIZED : httpStatus.INTERNAL_SERVER_ERROR;
+            throw new ApiError(statusCode, `Razorpay order creation failed: ${err.error?.description || err.message}`);
         }
     } else {
         // Fallback test order when Razorpay keys are not yet provided
@@ -120,7 +127,7 @@ const createOrder = async (userId) => {
     await Payment.create({
         user_id: userId,
         razorpay_order_id: orderId,
-        amount: 5.0,
+        amount: Number((amountInPaise / 100).toFixed(2)),
         currency,
         status: "created",
         plan: "monthly_rs_5",
@@ -128,9 +135,11 @@ const createOrder = async (userId) => {
     });
 
     return {
+        order_id: orderId,
         orderId,
         amount: amountInPaise,
         currency,
+        key_id: process.env.RAZORPAY_KEY_ID || "rzp_test_placeholder",
         keyId: process.env.RAZORPAY_KEY_ID || "rzp_test_placeholder",
         isSandbox,
         user: {
@@ -140,11 +149,15 @@ const createOrder = async (userId) => {
     };
 };
 
-const verifyPayment = async (userId, paymentData) => {
+const verifyPayment = async (userId, paymentData = {}) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = paymentData;
 
-    if (!razorpay_order_id) {
-        throw new ApiError(httpStatus.BAD_REQUEST, "Missing razorpay_order_id in verification payload");
+    // Validate required fields
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            "Missing required verification fields: razorpay_order_id, razorpay_payment_id, and razorpay_signature are required"
+        );
     }
 
     const user = await User.findByPk(userId);
@@ -156,30 +169,32 @@ const verifyPayment = async (userId, paymentData) => {
         where: { razorpay_order_id, user_id: userId },
     });
 
-    if (!payment) {
-        throw new ApiError(httpStatus.NOT_FOUND, "Payment order record not found");
-    }
-
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
-    if (keySecret && keySecret !== "your_razorpay_key_secret" && keySecret.trim() !== "") {
-        // Cryptographic HMAC SHA-256 verification
-        const hmac = crypto.createHmac("sha256", keySecret);
-        hmac.update(`${razorpay_order_id}|${razorpay_payment_id}`);
-        const generatedSignature = hmac.digest("hex");
+    if (!keySecret) {
+        throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "RAZORPAY_KEY_SECRET is not configured");
+    }
 
-        if (generatedSignature !== razorpay_signature) {
+    // Cryptographic HMAC SHA-256 verification: HMAC-SHA256(order_id + "|" + payment_id, KEY_SECRET)
+    const hmac = crypto.createHmac("sha256", keySecret);
+    hmac.update(`${razorpay_order_id}|${razorpay_payment_id}`);
+    const generatedSignature = hmac.digest("hex");
+
+    if (generatedSignature !== razorpay_signature) {
+        if (payment) {
             payment.status = "failed";
             await payment.save();
-            throw new ApiError(httpStatus.BAD_REQUEST, "Payment verification failed: Invalid signature");
         }
+        throw new ApiError(httpStatus.BAD_REQUEST, "Payment verification failed: signature mismatch");
     }
 
     // Mark payment as captured
-    payment.razorpay_payment_id = razorpay_payment_id || `pay_sim_${Date.now()}`;
-    payment.razorpay_signature = razorpay_signature || "simulated_signature";
-    payment.status = "captured";
-    await payment.save();
+    if (payment) {
+        payment.razorpay_payment_id = razorpay_payment_id;
+        payment.razorpay_signature = razorpay_signature;
+        payment.status = "captured";
+        await payment.save();
+    }
 
     // Extend or activate user subscription by 30 days
     const now = new Date();

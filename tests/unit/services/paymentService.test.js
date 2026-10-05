@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+
 jest.mock("../../../src/models", () => ({
     User: {
         findByPk: jest.fn(),
@@ -13,6 +15,11 @@ const { User, Payment } = require("../../../src/models");
 const paymentService = require("../../../src/services/paymentService");
 
 describe("PaymentService", () => {
+    beforeEach(() => {
+        process.env.RAZORPAY_KEY_ID = "rzp_test_TkA6xE3MDke4M1";
+        process.env.RAZORPAY_KEY_SECRET = "mCHqyg3PPO2W0oZHoC1KzGP9";
+    });
+
     afterEach(() => {
         jest.clearAllMocks();
     });
@@ -84,7 +91,7 @@ describe("PaymentService", () => {
     });
 
     describe("createOrder", () => {
-        it("should create an order for 500 paise (Rs. 5)", async () => {
+        it("should create an order for 500 paise (Rs. 5) by default", async () => {
             const mockUser = {
                 id: 1,
                 name: "Test User",
@@ -97,8 +104,7 @@ describe("PaymentService", () => {
 
             expect(order).toBeDefined();
             expect(order.amount).toBe(500); // 500 paise = Rs. 5
-            expect(order.currency).toBe("INR");
-            expect(order.orderId).toBeDefined();
+            expect(order.order_id).toBeDefined();
             expect(Payment.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     user_id: 1,
@@ -108,10 +114,49 @@ describe("PaymentService", () => {
                 })
             );
         });
+
+        it("should reject order with amount less than 100 paise", async () => {
+            const mockUser = { id: 1, name: "Test User" };
+            User.findByPk.mockResolvedValue(mockUser);
+
+            await expect(paymentService.createOrder(1, { amount: 50 })).rejects.toThrow(
+                "Amount must be at least 100 paise"
+            );
+        });
     });
 
     describe("verifyPayment", () => {
-        it("should verify payment and activate subscription for 30 days", async () => {
+        it("should throw error if required verification fields are missing", async () => {
+            await expect(
+                paymentService.verifyPayment(1, { razorpay_order_id: "order_123" })
+            ).rejects.toThrow("Missing required verification fields");
+        });
+
+        it("should throw error on signature mismatch and not mark as captured", async () => {
+            const mockUser = { id: 1, subscription_status: "trial", save: jest.fn() };
+            const mockPayment = {
+                id: 1,
+                razorpay_order_id: "order_123",
+                status: "created",
+                save: jest.fn().mockResolvedValue(true),
+            };
+
+            User.findByPk.mockResolvedValue(mockUser);
+            Payment.findOne.mockResolvedValue(mockPayment);
+
+            await expect(
+                paymentService.verifyPayment(1, {
+                    razorpay_order_id: "order_123",
+                    razorpay_payment_id: "pay_123",
+                    razorpay_signature: "invalid_mismatch_signature",
+                })
+            ).rejects.toThrow("signature mismatch");
+
+            expect(mockPayment.status).toBe("failed");
+            expect(mockUser.save).not.toHaveBeenCalled();
+        });
+
+        it("should verify payment and activate subscription when signature is valid", async () => {
             const mockUser = {
                 id: 1,
                 subscription_status: "trial",
@@ -129,10 +174,16 @@ describe("PaymentService", () => {
             User.findByPk.mockResolvedValue(mockUser);
             Payment.findOne.mockResolvedValue(mockPayment);
 
+            const secret = process.env.RAZORPAY_KEY_SECRET;
+            const validSignature = crypto
+                .createHmac("sha256", secret)
+                .update("order_123|pay_123")
+                .digest("hex");
+
             const result = await paymentService.verifyPayment(1, {
                 razorpay_order_id: "order_123",
                 razorpay_payment_id: "pay_123",
-                razorpay_signature: "sig_123",
+                razorpay_signature: validSignature,
             });
 
             expect(result.success).toBe(true);

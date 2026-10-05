@@ -13,11 +13,16 @@ const getSubscriptionStatus = asyncHandler(async (req, res) => {
 
 const createOrder = asyncHandler(async (req, res) => {
     const userId = req.user?.id || req.body.userId || 1;
-    const orderData = await paymentService.createOrder(userId);
+    const orderData = await paymentService.createOrder(userId, req.body);
 
     return res.status(201).json({
         success: true,
         message: "Razorpay order created successfully",
+        order_id: orderData.order_id,
+        orderId: orderData.orderId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        key_id: orderData.key_id,
         data: orderData,
     });
 });
