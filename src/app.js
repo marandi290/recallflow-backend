@@ -19,6 +19,7 @@ const searchRoutes = require("./routes/searchRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const dataRoutes = require("./routes/dataRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 const errorHandler = require("./middlewares/errorHandler");
 
 const app = express();
@@ -59,6 +60,7 @@ app.use("/api/v1/search", searchRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/ai", aiRoutes);
 app.use("/api/v1/data", dataRoutes);
+app.use("/api/v1/payments", paymentRoutes);
 
 // Global Error Handler
 app.use(errorHandler);

@@ -4,6 +4,7 @@ const Course = require("./Course");
 const Topic = require("./Topic");
 const StudyEntry = require("./StudyEntry");
 const Revision = require("./Revision");
+const Payment = require("./Payment");
 
 // Associations
 User.hasMany(Course, {
@@ -14,6 +15,21 @@ User.hasMany(Course, {
 });
 
 Course.belongsTo(User, {
+    foreignKey: "user_id",
+    as: "user",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+});
+
+// User -> Payment
+User.hasMany(Payment, {
+    foreignKey: "user_id",
+    as: "payments",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+});
+
+Payment.belongsTo(User, {
     foreignKey: "user_id",
     as: "user",
     onDelete: "CASCADE",
@@ -72,4 +88,5 @@ module.exports = {
     Topic,
     StudyEntry,
     Revision,
+    Payment,
 };

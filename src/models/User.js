@@ -25,6 +25,19 @@ const User = sequelize.define(
             type: DataTypes.STRING(255),
             allowNull: true, // Allow null for legacy test users without breaking mock factories
         },
+        subscription_status: {
+            type: DataTypes.STRING(20),
+            allowNull: false,
+            defaultValue: "trial",
+        },
+        trial_ends_at: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+        subscription_ends_at: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
     },
     {
         tableName: "users",

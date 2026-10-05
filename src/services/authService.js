@@ -22,11 +22,13 @@ const register = async (userData) => {
     }
 
     const hashedPassword = await bcrypt.hash(userData.password, 10);
-
+    const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const newUser = await User.create({
         name: userData.name,
         email: userData.email,
         password: hashedPassword,
+        subscription_status: "trial",
+        trial_ends_at: trialEndsAt,
     });
 
     const token = generateToken(newUser);

@@ -9,7 +9,22 @@ async function startServer() {
         await sequelize.authenticate();
         console.log("✅ Database connected successfully.");
 
-        await sequelize.sync({ alter: process.env.NODE_ENV !== "production" });
+        // Safe column additions for TiDB / MySQL production compatibility
+        try {
+            await sequelize.query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(20) DEFAULT 'trial';"
+            );
+            await sequelize.query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at DATETIME DEFAULT NULL;"
+            );
+            await sequelize.query(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_ends_at DATETIME DEFAULT NULL;"
+            );
+        } catch (colErr) {
+            console.warn("Notice: Column check/alter on users table:", colErr.message);
+        }
+
+        await sequelize.sync({ alter: true });
         console.log("✅ Models synchronized.");
 
         server = app.listen(PORT, () => {

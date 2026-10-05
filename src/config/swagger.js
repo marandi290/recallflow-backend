@@ -27,6 +27,7 @@ const options = {
             { name: "Calendar", description: "Monthly study & revision grid" },
             { name: "Search", description: "Global keyword search" },
             { name: "Notifications", description: "Daily revision reminders & alert notifications" },
+            { name: "Payments", description: "Razorpay subscriptions and paywall management" },
         ],
     },
     apis: ["./src/routes/*.js"],
