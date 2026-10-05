@@ -36,6 +36,16 @@ app.use("/api", apiLimiter);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use("/api/v1/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+// Root Welcome & Health Check
+app.get("/", (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: "RecallFlow Backend API is online",
+        docs: "/api-docs",
+        version: "1.0.0",
+    });
+});
+
 // API Routes
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/courses", courseRoutes);
