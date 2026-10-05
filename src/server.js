@@ -1,5 +1,5 @@
 const app = require("./app");
-const { sequelize } = require("./models");
+const { sequelize, Payment } = require("./models");
 
 const PORT = process.env.PORT || 3000;
 let server;
@@ -9,23 +9,27 @@ async function startServer() {
         await sequelize.authenticate();
         console.log("✅ Database connected successfully.");
 
-        // Safe column additions for TiDB / MySQL production compatibility
+        // Create Payment table if it does not exist
         try {
-            await sequelize.query(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(20) DEFAULT 'trial';"
-            );
-            await sequelize.query(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at DATETIME DEFAULT NULL;"
-            );
-            await sequelize.query(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_ends_at DATETIME DEFAULT NULL;"
-            );
-        } catch (colErr) {
-            console.warn("Notice: Column check/alter on users table:", colErr.message);
+            await Payment.sync();
+        } catch (tableErr) {
+            console.warn("Notice: Payment table sync:", tableErr.message);
         }
 
-        await sequelize.sync({ alter: true });
-        console.log("✅ Models synchronized.");
+        // Safe column additions for TiDB / MySQL production compatibility
+        const safeAddColumn = async (columnDef) => {
+            try {
+                await sequelize.query(`ALTER TABLE users ADD COLUMN ${columnDef}`);
+            } catch (colErr) {
+                // Ignore if column already exists (MySQL errno 1060)
+            }
+        };
+
+        await safeAddColumn("subscription_status VARCHAR(20) DEFAULT 'trial'");
+        await safeAddColumn("trial_ends_at DATETIME DEFAULT NULL");
+        await safeAddColumn("subscription_ends_at DATETIME DEFAULT NULL");
+
+        console.log("✅ Models and tables ready.");
 
         server = app.listen(PORT, () => {
             console.log(`🚀 Server running on port ${PORT}`);
